@@ -1,0 +1,2 @@
+import { notFound } from "next/navigation";import { SiteHeader } from "@/components/public/site-header";import { SiteFooter } from "@/components/public/site-footer";import { prisma } from "@/lib/prisma";
+export default async function Post({params}:{params:{slug:string}}){ const p=await prisma.blogPost.findUnique({where:{slug:params.slug}}); if(!p) notFound(); return <><SiteHeader/><main className="mx-auto max-w-3xl p-8"><h1 className="mb-4 text-4xl font-black">{p.title}</h1><p className="leading-8 text-gray-700">{p.content}</p></main><SiteFooter/></> }
