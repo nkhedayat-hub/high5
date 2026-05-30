@@ -1,0 +1,5 @@
+import { requireTrainer } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { Card, CardTitle } from "@/components/ui/card";
+import { Table, Td, Th } from "@/components/ui/table";
+export default async function TrainerDashboard(){ const user=await requireTrainer(); const classes=await prisma.classSchedule.findMany({where:{trainerId:user.trainerId},include:{discipline:true,reservations:{include:{member:true}}}}); return <div className="space-y-6"><h1 className="text-3xl font-black">داشبورد مربی</h1><div className="grid gap-4 md:grid-cols-4"><Card><p>کلاس‌های امروز</p><b>{classes.length}</b></Card><Card><p>شاگردان</p><b>{classes.reduce((s,c)=>s+c.reservations.length,0)}</b></Card><Card><p>رضایت</p><b>۴.۸</b></Card><Card><p>درآمد ماه</p><b>در حال محاسبه</b></Card></div><Card><CardTitle className="mb-4">کلاس‌های اختصاص داده شده</CardTitle><Table><thead><tr><Th>کلاس</Th><Th>رشته</Th><Th>زمان</Th><Th>رزرو</Th></tr></thead><tbody>{classes.map(c=><tr key={c.id}><Td>{c.title}</Td><Td>{c.discipline.name}</Td><Td>{c.startTime}-{c.endTime}</Td><Td>{c.reservations.length}/{c.capacity}</Td></tr>)}</tbody></Table></Card></div> }

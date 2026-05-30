@@ -1,0 +1,393 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus { ACTIVE INACTIVE BLOCKED }
+enum MemberStatus { ACTIVE INACTIVE BLOCKED EXPIRED }
+enum RecordStatus { ACTIVE INACTIVE DRAFT PUBLISHED ARCHIVED }
+enum MembershipStatus { ACTIVE EXPIRED CANCELLED FROZEN }
+enum ReservationStatus { RESERVED CANCELLED ATTENDED NO_SHOW }
+enum AttendanceType { MEMBER STAFF }
+enum PaymentMethod { CASH CARD TRANSFER ONLINE }
+enum PaymentStatus { PAID PARTIAL UNPAID REFUNDED }
+enum DiscountType { PERCENTAGE FIXED }
+enum LoyaltyTransactionType { EARNED REDEEMED ADJUSTED }
+enum LoyaltySource { ATTENDANCE PAYMENT REFERRAL PRODUCT_PURCHASE ADMIN FEEDBACK }
+enum ReferralStatus { PENDING APPROVED USED }
+enum InventoryTransactionType { IN OUT }
+enum LeadStatus { NEW CONTACTED CONVERTED LOST }
+enum NoteType { GENERAL CALL TELEGRAM FOLLOW_UP }
+
+model User {
+  id              String           @id @default(cuid())
+  name            String
+  email           String?          @unique
+  mobile          String?          @unique
+  passwordHash    String
+  roleId          String
+  role            Role             @relation("RoleUsers", fields: [roleId], references: [id])
+  status          UserStatus       @default(ACTIVE)
+  memberProfile   MemberProfile?
+  trainerProfile  TrainerProfile?
+  assignedLeads   Lead[]           @relation("LeadAssignee")
+  authoredNotes   Note[]           @relation("NoteAuthor")
+  createdPayments Payment[]        @relation("PaymentCreator")
+  createdRoles    Role[]           @relation("RoleCreator")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions Json
+  createdById String?
+  createdBy   User?    @relation("RoleCreator", fields: [createdById], references: [id])
+  users       User[]   @relation("RoleUsers")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MemberProfile {
+  id                  String               @id @default(cuid())
+  userId              String               @unique
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberCode          String               @unique
+  firstName           String
+  lastName            String
+  mobile              String               @unique
+  email               String?
+  birthDate           DateTime?
+  address             String?
+  job                 String?
+  referralSource      String?
+  socialNetwork       String?
+  medicalNotes        String?
+  goal                String?
+  avatarUrl           String?
+  status              MemberStatus         @default(ACTIVE)
+  balance             Decimal              @default(0) @db.Decimal(14, 2)
+  joinedAt            DateTime             @default(now())
+  lastAttendanceAt    DateTime?
+  loyaltyPoints       Int                  @default(0)
+  loyaltyTier         String               @default("Bronze")
+  referralCode        String               @unique
+  referredByCode      String?
+  memberships         Membership[]
+  reservations        ClassReservation[]
+  attendance          Attendance[]
+  payments            Payment[]
+  loyaltyTransactions LoyaltyTransaction[]
+  referralsMade       Referral[]           @relation("Referrer")
+  referralsReceived   Referral[]           @relation("Referred")
+  productSales        ProductSale[]
+  notes               Note[]
+  feedbacks           Feedback[]
+  gifts               Gift[]
+  insurances          Insurance[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model TrainerProfile {
+  id              String          @id @default(cuid())
+  userId          String          @unique
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio             String?
+  specialties     Json
+  commissionType  String          @default("PERCENTAGE")
+  commissionValue Decimal         @default(0) @db.Decimal(10, 2)
+  rating          Decimal         @default(5) @db.Decimal(3, 2)
+  schedules       ClassSchedule[]
+  attendances     Attendance[]
+  feedbacks       Feedback[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model SportDiscipline {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  description String?
+  status      RecordStatus    @default(ACTIVE)
+  plans       Plan[]
+  schedules   ClassSchedule[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model Plan {
+  id                  String          @id @default(cuid())
+  title               String
+  disciplineId        String
+  discipline          SportDiscipline @relation(fields: [disciplineId], references: [id])
+  sessionCount        Int
+  durationDays        Int
+  price               Decimal         @db.Decimal(14, 2)
+  isMixedClassAllowed Boolean         @default(false)
+  status              RecordStatus    @default(ACTIVE)
+  memberships         Membership[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+model Membership {
+  id               String             @id @default(cuid())
+  memberId         String
+  member           MemberProfile      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  planId           String
+  plan             Plan               @relation(fields: [planId], references: [id])
+  startDate        DateTime
+  endDate          DateTime
+  totalSessions    Int
+  usedSessions     Int                @default(0)
+  remainingSessions Int
+  burnedSessions   Int                @default(0)
+  status           MembershipStatus   @default(ACTIVE)
+  mixedClassConfig Json?
+  attendances      Attendance[]
+  payments         Payment[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model ClassSchedule {
+  id             String             @id @default(cuid())
+  title          String
+  disciplineId   String
+  discipline     SportDiscipline    @relation(fields: [disciplineId], references: [id])
+  trainerId      String
+  trainer        TrainerProfile     @relation(fields: [trainerId], references: [id])
+  room           String
+  capacity       Int
+  startTime      String
+  endTime        String
+  weekday        Int
+  level          String
+  price          Decimal            @default(0) @db.Decimal(14, 2)
+  status         RecordStatus       @default(ACTIVE)
+  reservations   ClassReservation[]
+  attendances    Attendance[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model ClassReservation {
+  id              String            @id @default(cuid())
+  memberId        String
+  member          MemberProfile     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  classScheduleId String
+  classSchedule   ClassSchedule     @relation(fields: [classScheduleId], references: [id])
+  date            DateTime
+  status          ReservationStatus @default(RESERVED)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model Attendance {
+  id              String          @id @default(cuid())
+  memberId        String?
+  member          MemberProfile?  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  membershipId    String?
+  membership      Membership?     @relation(fields: [membershipId], references: [id])
+  classScheduleId String?
+  classSchedule   ClassSchedule?  @relation(fields: [classScheduleId], references: [id])
+  trainerId       String?
+  trainer         TrainerProfile? @relation(fields: [trainerId], references: [id])
+  checkInAt       DateTime        @default(now())
+  checkOutAt      DateTime?
+  type            AttendanceType  @default(MEMBER)
+  note            String?
+  createdAt       DateTime        @default(now())
+}
+
+model Payment {
+  id             String          @id @default(cuid())
+  memberId       String
+  member         MemberProfile   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  membershipId   String?
+  membership     Membership?     @relation(fields: [membershipId], references: [id])
+  productSaleId  String?
+  productSale    ProductSale?    @relation(fields: [productSaleId], references: [id])
+  amount         Decimal         @db.Decimal(14, 2)
+  method         PaymentMethod
+  status         PaymentStatus
+  discountAmount Decimal         @default(0) @db.Decimal(14, 2)
+  debtAmount     Decimal         @default(0) @db.Decimal(14, 2)
+  dueDate        DateTime?
+  description    String?
+  createdById    String
+  createdBy      User            @relation("PaymentCreator", fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+}
+
+model DiscountCode {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  title     String
+  type      DiscountType
+  value     Decimal      @db.Decimal(14, 2)
+  maxUsage  Int
+  usedCount Int          @default(0)
+  startDate DateTime
+  endDate   DateTime
+  status    RecordStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+}
+
+model LoyaltyTransaction {
+  id        String                 @id @default(cuid())
+  memberId  String
+  member    MemberProfile          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  points    Int
+  type      LoyaltyTransactionType
+  reason    String
+  source    LoyaltySource
+  createdAt DateTime               @default(now())
+}
+
+model Referral {
+  id               String         @id @default(cuid())
+  referrerMemberId String
+  referrerMember   MemberProfile  @relation("Referrer", fields: [referrerMemberId], references: [id])
+  referredMemberId String
+  referredMember   MemberProfile  @relation("Referred", fields: [referredMemberId], references: [id])
+  discountPercent  Decimal        @default(10) @db.Decimal(5, 2)
+  status           ReferralStatus @default(PENDING)
+  createdAt        DateTime       @default(now())
+}
+
+model Product {
+  id          String                 @id @default(cuid())
+  name        String
+  description String?
+  price       Decimal                @db.Decimal(14, 2)
+  stock       Int                    @default(0)
+  category    String
+  imageUrl    String?
+  status      RecordStatus           @default(ACTIVE)
+  sales       ProductSale[]
+  transactions InventoryTransaction[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+}
+
+model ProductSale {
+  id          String        @id @default(cuid())
+  memberId    String
+  member      MemberProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product       @relation(fields: [productId], references: [id])
+  quantity    Int
+  totalAmount Decimal       @db.Decimal(14, 2)
+  payments    Payment[]
+  createdAt   DateTime      @default(now())
+}
+
+model InventoryTransaction {
+  id        String                   @id @default(cuid())
+  productId String
+  product   Product                  @relation(fields: [productId], references: [id])
+  type      InventoryTransactionType
+  quantity  Int
+  note      String?
+  createdAt DateTime                 @default(now())
+}
+
+model Lead {
+  id           String     @id @default(cuid())
+  fullName     String
+  mobile       String
+  email        String?
+  source       String
+  message      String?
+  status       LeadStatus  @default(NEW)
+  assignedToId String?
+  assignedTo   User?       @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Note {
+  id         String        @id @default(cuid())
+  memberId   String
+  member     MemberProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User          @relation("NoteAuthor", fields: [authorId], references: [id])
+  content    String
+  type       NoteType      @default(GENERAL)
+  followUpAt DateTime?
+  createdAt  DateTime      @default(now())
+}
+
+model Feedback {
+  id        String          @id @default(cuid())
+  memberId  String
+  member    MemberProfile   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  trainerId String?
+  trainer   TrainerProfile? @relation(fields: [trainerId], references: [id])
+  rating    Int
+  message   String
+  createdAt DateTime        @default(now())
+}
+
+model Gift {
+  id          String        @id @default(cuid())
+  memberId    String
+  member      MemberProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      RecordStatus  @default(ACTIVE)
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+model Insurance {
+  id           String        @id @default(cuid())
+  memberId     String
+  member       MemberProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  provider     String
+  policyNumber String
+  startDate    DateTime
+  endDate      DateTime
+  status       RecordStatus  @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+}
+
+model WebsiteContent {
+  id        String       @id @default(cuid())
+  key       String       @unique
+  title     String
+  content   String
+  imageUrl  String?
+  status    RecordStatus @default(PUBLISHED)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model BlogPost {
+  id            String       @id @default(cuid())
+  title         String
+  slug          String       @unique
+  excerpt       String
+  content       String
+  coverImageUrl String?
+  status        RecordStatus @default(PUBLISHED)
+  publishedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
